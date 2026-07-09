@@ -5,7 +5,7 @@ const exercises = [
 ];
 
 const missingQuestionIds = new Set([9, 54, 80]);
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = window.location.origin;
 const $ = (selector) => document.querySelector(selector);
 
 const ui = {
