@@ -182,6 +182,9 @@ textarea {
 .speech-settings select, .speech-settings input { width: 100%; }
 .speech-settings input { accent-color: var(--accent); }
 .reader-actions { display: flex; gap: 8px; }
+.question-reader-actions { margin-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.question-speak-button { padding-inline: 8px; }
+.question-speak-button:disabled { cursor: not-allowed; opacity: 0.45; }
 .check-row { margin-top: 15px; display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
 .check-row input { accent-color: var(--accent); }
 
@@ -208,6 +211,7 @@ textarea {
   .brand strong { font-size: 14px; }
   .viewer-card, .question-card { border-radius: 15px; padding: 16px; }
   .speech-settings { grid-template-columns: 1fr; }
+  .question-reader-actions { grid-template-columns: 1fr; }
   .position-label { display: none; }
   .navigation { grid-template-columns: 1fr 1fr; }
 }

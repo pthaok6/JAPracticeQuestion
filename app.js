@@ -30,7 +30,7 @@ const ui = {
   rateInput: $("#rateInput"),
   rateOutput: $("#rateOutput"),
   autoReadInput: $("#autoReadInput"),
-  speakButton: $("#speakButton"),
+  questionSpeakButtons: [...document.querySelectorAll(".question-speak-button")],
   stopButton: $("#stopButton"),
   fullscreenButton: $("#fullscreenButton"),
   lightbox: $("#lightbox"),
@@ -43,6 +43,7 @@ let ocrWorker = null;
 let ocrScriptPromise = null;
 let saveTimer = null;
 let loadGeneration = 0;
+let activeUtterance = null;
 
 function fileUrl(name) {
   return encodeURI(`image/${name}`);
@@ -107,12 +108,14 @@ async function selectExercise(index, options = {}) {
     ui.questionImage.src = fileUrl(`${label} Câu hỏi.jpg`);
     ui.questionImage.alt = `Ảnh câu hỏi của bộ đề ${label}`;
     ui.questionText.value = "";
+    updateQuestionSpeakButtons();
     ui.questionText.disabled = true;
     ui.questionText.placeholder = "Đang tải nội dung đã lưu…";
     try {
       const savedText = await loadSavedQuestion(id);
       if (generation !== loadGeneration) return;
       ui.questionText.value = savedText;
+      updateQuestionSpeakButtons();
       ui.ocrStatus.textContent = savedText ? "Đã tải nội dung từ hệ thống." : "";
       if (options.autoSpeak && ui.autoReadInput.checked && savedText.trim()) {
         speakQuestion();
@@ -128,6 +131,7 @@ async function selectExercise(index, options = {}) {
   } else {
     ui.missingFilename.textContent = `${label} Câu hỏi.jpg`;
     ui.questionText.value = "";
+    updateQuestionSpeakButtons();
   }
 
   document.title = `${label} · Luyện nói JPD123`;
@@ -181,6 +185,7 @@ async function recognizeQuestion() {
       .trim();
 
     ui.questionText.value = cleaned;
+    updateQuestionSpeakButtons();
     await saveQuestion(currentId(), cleaned, false);
     ui.ocrStatus.textContent = cleaned
       ? "Đã nhận chữ và lưu trên hệ thống. Bạn có thể sửa lại trước khi nghe."
@@ -211,25 +216,82 @@ function populateVoices() {
   }
 }
 
-function speakQuestion() {
-  const text = ui.questionText.value.trim();
+function getQuestionParts() {
+  const lines = ui.questionText.value
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length <= 3) return lines;
+
+  const parts = [];
+  let currentPart = "";
+  for (const line of lines) {
+    currentPart = currentPart ? `${currentPart} ${line}` : line;
+    if (/[。！？?!]$/.test(line) && parts.length < 2) {
+      parts.push(currentPart);
+      currentPart = "";
+    }
+  }
+  if (currentPart) parts.push(currentPart);
+
+  return parts.length === 3
+    ? parts
+    : [lines[0], lines[1], lines.slice(2).join(" ")];
+}
+
+function updateQuestionSpeakButtons() {
+  const questionCount = getQuestionParts().length;
+  ui.questionSpeakButtons.forEach((button, index) => {
+    button.disabled = index >= questionCount;
+  });
+}
+
+function speakQuestion(questionIndex) {
+  const questionParts = getQuestionParts();
+  const text = questionIndex === undefined
+    ? ui.questionText.value.trim()
+    : questionParts[questionIndex];
   if (!text) {
-    ui.ocrStatus.textContent = "Chưa có nội dung. Hãy nhận chữ từ ảnh hoặc nhập câu hỏi trước.";
+    ui.ocrStatus.textContent = questionIndex === undefined
+      ? "Chưa có nội dung để đọc."
+      : `Chưa có nội dung cho câu ${questionIndex + 1}.`;
     ui.questionText.focus();
     return;
   }
 
+  if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+    ui.ocrStatus.textContent = "Trình duyệt này không hỗ trợ chức năng đọc văn bản.";
+    return;
+  }
+
   speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "ja-JP";
-  utterance.rate = Number(ui.rateInput.value);
+  speechSynthesis.resume();
+  activeUtterance = new SpeechSynthesisUtterance(text);
+  activeUtterance.lang = "ja-JP";
+  activeUtterance.rate = Number(ui.rateInput.value);
   const selectedVoice = speechSynthesis.getVoices().find(
     (voice) => voice.voiceURI === ui.voiceSelect.value
   );
-  if (selectedVoice) utterance.voice = selectedVoice;
-  utterance.onstart = () => { ui.ocrStatus.textContent = "Đang đọc câu hỏi…"; };
-  utterance.onend = () => { ui.ocrStatus.textContent = "Đã đọc xong."; };
-  utterance.onerror = () => { ui.ocrStatus.textContent = "Không thể phát giọng đọc trên trình duyệt này."; };
+  if (selectedVoice) activeUtterance.voice = selectedVoice;
+
+  const utterance = activeUtterance;
+  utterance.onstart = () => {
+    ui.ocrStatus.textContent = questionIndex === undefined
+      ? "Đang tự đọc các câu hỏi…"
+      : `Đang đọc câu ${questionIndex + 1}…`;
+  };
+  utterance.onend = () => {
+    if (activeUtterance === utterance) {
+      activeUtterance = null;
+      ui.ocrStatus.textContent = "Đã đọc xong.";
+    }
+  };
+  utterance.onerror = (event) => {
+    if (activeUtterance !== utterance || event.error === "canceled") return;
+    activeUtterance = null;
+    ui.ocrStatus.textContent = "Không thể phát giọng đọc. Hãy kiểm tra âm lượng hoặc thử chọn giọng khác.";
+  };
   speechSynthesis.speak(utterance);
 }
 
@@ -260,15 +322,19 @@ ui.revealButton.addEventListener("click", () => {
 });
 
 ui.ocrButton.addEventListener("click", recognizeQuestion);
-ui.speakButton.addEventListener("click", speakQuestion);
+ui.questionSpeakButtons.forEach((button) => {
+  button.addEventListener("click", () => speakQuestion(Number(button.dataset.questionIndex)));
+});
 ui.stopButton.addEventListener("click", () => {
   speechSynthesis.cancel();
+  activeUtterance = null;
   ui.ocrStatus.textContent = "Đã dừng đọc.";
 });
 ui.rateInput.addEventListener("input", () => {
   ui.rateOutput.textContent = `${Number(ui.rateInput.value).toFixed(1)}×`;
 });
 ui.questionText.addEventListener("input", () => {
+  updateQuestionSpeakButtons();
   clearTimeout(saveTimer);
   const id = currentId();
   const text = ui.questionText.value;
