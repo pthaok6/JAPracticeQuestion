@@ -73,13 +73,15 @@
           <div class="reader-title">
             <div>
               <h3>Nội dung để đọc</h3>
-              <p>Nhận chữ Nhật từ ảnh hoặc nhập lại nếu cần.</p>
+              <p>Nhập hoặc chỉnh sửa câu hỏi tiếng Nhật nếu cần.</p>
             </div>
-            <button id="ocrButton" class="text-button" type="button">Nhận chữ từ ảnh</button>
+            <button id="toggleTextButton" class="text-button" type="button" aria-pressed="true">Hiện nội dung</button>
           </div>
 
-          <div id="ocrStatus" class="status" role="status" aria-live="polite"></div>
-          <textarea id="questionText" rows="7" lang="ja" placeholder="Bấm “Nhận chữ từ ảnh”, hoặc nhập câu hỏi tiếng Nhật tại đây…"></textarea>
+          <div id="readerStatus" class="status" role="status" aria-live="polite"></div>
+          <div class="question-text-wrap">
+            <textarea id="questionText" class="is-content-hidden" rows="7" lang="ja" readonly placeholder="Nhập câu hỏi tiếng Nhật tại đây…"></textarea>
+          </div>
 
           <div class="speech-settings">
             <label>
@@ -104,7 +106,7 @@
 
           <label class="check-row">
             <input id="autoReadInput" type="checkbox">
-            <span>Tự đọc khi chuyển sang đề đã nhận chữ</span>
+            <span>Tự đọc khi chuyển sang đề có nội dung</span>
           </label>
         </div>
       </div>

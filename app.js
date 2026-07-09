@@ -23,8 +23,8 @@ const ui = {
   revealButton: $("#revealButton"),
   questionImageWrap: $("#questionImageWrap"),
   questionImage: $("#questionImage"),
-  ocrButton: $("#ocrButton"),
-  ocrStatus: $("#ocrStatus"),
+  toggleTextButton: $("#toggleTextButton"),
+  readerStatus: $("#readerStatus"),
   questionText: $("#questionText"),
   voiceSelect: $("#voiceSelect"),
   rateInput: $("#rateInput"),
@@ -39,8 +39,6 @@ const ui = {
 };
 
 let currentIndex = 0;
-let ocrWorker = null;
-let ocrScriptPromise = null;
 let saveTimer = null;
 let loadGeneration = 0;
 let activeUtterance = null;
@@ -77,7 +75,7 @@ async function saveQuestion(id, text, showStatus = true) {
   });
   if (!response.ok) throw new Error("Không lưu được nội dung lên hệ thống.");
   if (showStatus && id === currentId()) {
-    ui.ocrStatus.textContent = "Đã lưu trên hệ thống.";
+    ui.readerStatus.textContent = "Đã lưu trên hệ thống.";
   }
 }
 
@@ -102,7 +100,7 @@ async function selectExercise(index, options = {}) {
   ui.missingQuestion.hidden = hasQuestion;
   ui.questionImageWrap.hidden = true;
   ui.revealButton.innerHTML = eyeIcon() + "Hiện ảnh câu hỏi";
-  ui.ocrStatus.textContent = "";
+  ui.readerStatus.textContent = "";
 
   if (hasQuestion) {
     ui.questionImage.src = fileUrl(`${label} Câu hỏi.jpg`);
@@ -116,16 +114,16 @@ async function selectExercise(index, options = {}) {
       if (generation !== loadGeneration) return;
       ui.questionText.value = savedText;
       updateQuestionSpeakButtons();
-      ui.ocrStatus.textContent = savedText ? "Đã tải nội dung từ hệ thống." : "";
+      ui.readerStatus.textContent = savedText ? "Đã tải nội dung từ hệ thống." : "";
       if (options.autoSpeak && ui.autoReadInput.checked && savedText.trim()) {
         speakQuestion();
       }
     } catch (error) {
-      if (generation === loadGeneration) ui.ocrStatus.textContent = error.message;
+      if (generation === loadGeneration) ui.readerStatus.textContent = error.message;
     } finally {
       if (generation === loadGeneration) {
         ui.questionText.disabled = false;
-        ui.questionText.placeholder = "Bấm “Nhận chữ từ ảnh”, hoặc nhập câu hỏi tiếng Nhật tại đây…";
+        ui.questionText.placeholder = "Nhập câu hỏi tiếng Nhật tại đây…";
       }
     }
   } else {
@@ -139,62 +137,6 @@ async function selectExercise(index, options = {}) {
 
 function eyeIcon() {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>';
-}
-
-function loadOcrScript() {
-  if (window.Tesseract) return Promise.resolve();
-  if (ocrScriptPromise) return ocrScriptPromise;
-
-  ocrScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("Không tải được bộ nhận diện chữ."));
-    document.head.appendChild(script);
-  });
-  return ocrScriptPromise;
-}
-
-async function recognizeQuestion() {
-  ui.ocrButton.disabled = true;
-  ui.ocrStatus.textContent = "Đang chuẩn bị nhận diện tiếng Nhật…";
-
-  try {
-    await loadOcrScript();
-    if (!ocrWorker) {
-      ocrWorker = await Tesseract.createWorker("jpn", 1, {
-        logger: ({ status, progress }) => {
-          const labels = {
-            "loading tesseract core": "Đang tải bộ OCR",
-            "initializing tesseract": "Đang khởi tạo OCR",
-            "loading language traineddata": "Đang tải dữ liệu tiếng Nhật",
-            "initializing api": "Đang chuẩn bị tiếng Nhật",
-            "recognizing text": "Đang đọc chữ trong ảnh"
-          };
-          const percent = Number.isFinite(progress) ? ` ${Math.round(progress * 100)}%` : "";
-          ui.ocrStatus.textContent = `${labels[status] || "Đang xử lý"}${percent}…`;
-        }
-      });
-      await ocrWorker.setParameters({ preserve_interword_spaces: "1" });
-    }
-
-    const result = await ocrWorker.recognize(ui.questionImage.src);
-    const cleaned = result.data.text
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-
-    ui.questionText.value = cleaned;
-    updateQuestionSpeakButtons();
-    await saveQuestion(currentId(), cleaned, false);
-    ui.ocrStatus.textContent = cleaned
-      ? "Đã nhận chữ và lưu trên hệ thống. Bạn có thể sửa lại trước khi nghe."
-      : "Chưa nhận được chữ rõ ràng. Hãy nhập câu hỏi thủ công.";
-  } catch (error) {
-    ui.ocrStatus.textContent = `${error.message} Hãy kiểm tra Internet hoặc nhập câu hỏi thủ công.`;
-  } finally {
-    ui.ocrButton.disabled = false;
-  }
 }
 
 function populateVoices() {
@@ -247,13 +189,20 @@ function updateQuestionSpeakButtons() {
   });
 }
 
+function toggleQuestionText() {
+  const isHidden = ui.questionText.classList.toggle("is-content-hidden");
+  ui.questionText.readOnly = isHidden;
+  ui.toggleTextButton.textContent = isHidden ? "Hiện nội dung" : "Ẩn nội dung";
+  ui.toggleTextButton.setAttribute("aria-pressed", String(isHidden));
+}
+
 function speakQuestion(questionIndex) {
   const questionParts = getQuestionParts();
   const text = questionIndex === undefined
     ? ui.questionText.value.trim()
     : questionParts[questionIndex];
   if (!text) {
-    ui.ocrStatus.textContent = questionIndex === undefined
+    ui.readerStatus.textContent = questionIndex === undefined
       ? "Chưa có nội dung để đọc."
       : `Chưa có nội dung cho câu ${questionIndex + 1}.`;
     ui.questionText.focus();
@@ -261,7 +210,7 @@ function speakQuestion(questionIndex) {
   }
 
   if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
-    ui.ocrStatus.textContent = "Trình duyệt này không hỗ trợ chức năng đọc văn bản.";
+    ui.readerStatus.textContent = "Trình duyệt này không hỗ trợ chức năng đọc văn bản.";
     return;
   }
 
@@ -277,20 +226,20 @@ function speakQuestion(questionIndex) {
 
   const utterance = activeUtterance;
   utterance.onstart = () => {
-    ui.ocrStatus.textContent = questionIndex === undefined
+    ui.readerStatus.textContent = questionIndex === undefined
       ? "Đang tự đọc các câu hỏi…"
       : `Đang đọc câu ${questionIndex + 1}…`;
   };
   utterance.onend = () => {
     if (activeUtterance === utterance) {
       activeUtterance = null;
-      ui.ocrStatus.textContent = "Đã đọc xong.";
+      ui.readerStatus.textContent = "Đã đọc xong.";
     }
   };
   utterance.onerror = (event) => {
     if (activeUtterance !== utterance || event.error === "canceled") return;
     activeUtterance = null;
-    ui.ocrStatus.textContent = "Không thể phát giọng đọc. Hãy kiểm tra âm lượng hoặc thử chọn giọng khác.";
+    ui.readerStatus.textContent = "Không thể phát giọng đọc. Hãy kiểm tra âm lượng hoặc thử chọn giọng khác.";
   };
   speechSynthesis.speak(utterance);
 }
@@ -321,14 +270,14 @@ ui.revealButton.addEventListener("click", () => {
   ui.revealButton.innerHTML = eyeIcon() + (willShow ? "Ẩn ảnh câu hỏi" : "Hiện ảnh câu hỏi");
 });
 
-ui.ocrButton.addEventListener("click", recognizeQuestion);
+ui.toggleTextButton.addEventListener("click", toggleQuestionText);
 ui.questionSpeakButtons.forEach((button) => {
   button.addEventListener("click", () => speakQuestion(Number(button.dataset.questionIndex)));
 });
 ui.stopButton.addEventListener("click", () => {
   speechSynthesis.cancel();
   activeUtterance = null;
-  ui.ocrStatus.textContent = "Đã dừng đọc.";
+  ui.readerStatus.textContent = "Đã dừng đọc.";
 });
 ui.rateInput.addEventListener("input", () => {
   ui.rateOutput.textContent = `${Number(ui.rateInput.value).toFixed(1)}×`;
@@ -338,10 +287,10 @@ ui.questionText.addEventListener("input", () => {
   clearTimeout(saveTimer);
   const id = currentId();
   const text = ui.questionText.value;
-  ui.ocrStatus.textContent = "Đang chờ lưu…";
+  ui.readerStatus.textContent = "Đang chờ lưu…";
   saveTimer = setTimeout(() => {
     saveQuestion(id, text).catch((error) => {
-      if (id === currentId()) ui.ocrStatus.textContent = error.message;
+      if (id === currentId()) ui.readerStatus.textContent = error.message;
     });
   }, 500);
 });
